@@ -1,0 +1,99 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.ford'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.9.1')
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.8.1'
+    testImplementation 'junit:junit:4.13.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.8.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+subprojects {
+    group = rootProject.getGroup()
+    version = rootProject.getVersion()
+
+    tasks.register("listDependencies", DependencyReportTask) {
+        setConfiguration("runtimeClasspath")
+    }
+
+    configurations.configureEach {
+        resolutionStrategy.cacheDynamicVersionsFor 10, 'minutes'
+    }
+
+    apply plugin: "com.gorylenko.gradle-git-properties"
+
+    // Dependency Versioning
+    apply plugin: 'io.spring.dependency-management'
+    dependencyManagement {
+        imports {
+            mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2021.0.3'
+            mavenBom 'io.pivotal.spring.cloud:spring-cloud-services-dependencies:3.5.5'
+            mavenBom 'com.ford.cloudnative:spring-base-dependencies:2.3.0'
+            mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+        }
+        dependencies {
+            dependency 'io.springfox:springfox-swagger2:2.9.2'
+            dependency 'io.springfox:springfox-swagger-ui:2.9.2'
+
+            // CVE OVERRIDES
+            dependency 'org.yaml:snakeyaml:2.1'                     // CVE-2022-1471
+        }
+    }
+
+    plugins.withId('maven-publish') {
+        java {
+            withSourcesJar()
+        }
+        publishing {
+            publications {
+                mavenJava(MavenPublication) {
+                    artifactId "${rootProject.name}-${project.name}"
+                    from components.java
+                }
+            }
+
+            repositories {
+                maven {
+                    name = 'release'
+                    credentials(PasswordCredentials)
+                    url = 'https://www.nexus.ford.com/repository/gotd_om_private_release_repository/'
+                }
+            }
+        }
+    }
+}
+
+allprojects {
+
+    repositories {
+        maven { url = 'https://www.nexus.ford.com/repository/gotd_om_private_release_repository/' }
+        maven { url = 'https://www.nexus.ford.com/content/groups/public/' }
+        maven {
+            url = 'https://www.nexus.ford.com/repository/external-proxy-group/'
+            // Handle broken version of pom in io.rsocket:rsocket-bom:1.0.0-RC6 (mentions metadata that doesn't exist which breaks build)
+            // See this link for an explanation: https://discuss.gradle.org/t/gradle-upgrade-from-5-6-to-6-4-1/37467
+            // (Try removing metadataSources block when upgrading `spring-cloud-dependencies` beyond 2020.0.3 to see if the rsocket version has been updated)
+            metadataSources {
+                mavenPom()
+                artifact()
+                ignoreGradleMetadataRedirection()
+            }
+        }
+    }
+}
